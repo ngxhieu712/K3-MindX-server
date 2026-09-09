@@ -1,14 +1,29 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import dns from 'dns';
-
 dotenv.config();
+
+import cors from "cors";
+import cookieParser from "cookie-parser";
+
+import authRouter from './src/router/Auth.js';
 
 const app = express();
 
+app.use(cors({
+  origin: "http://localhost:5173", // đúng origin của client, KHÔNG dùng "*"
+  credentials: true,
+}));
+app.use(cookieParser());
+
+app.use(express.json());
+
 const PORT = process.env.PORT;
 const MONGODB_URI = process.env.MONGODB_URI;
+
+app.use('/api/auth', authRouter);
+
+
 
 async function startServer() {
     try {

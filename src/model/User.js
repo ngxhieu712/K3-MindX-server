@@ -1,18 +1,29 @@
 import mongoose from "mongoose";
-const { Schema } = mongoose;
- 
-// ---------------------------------------------------------------------
-// 1. USER
-// ---------------------------------------------------------------------
-const userSchema = new Schema({
-  fullName: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  passwordHash: { type: String, required: true },
-  phone: String,
-  role: { type: String, enum: ["customer", "staff", "admin"], default: "customer" },
-}, { timestamps: true,
-    collection: "User"
- });
 
-const User = mongoose.model("User", userSchema);
-module.exports = User;
+const { Schema } = mongoose;
+const model = (name, schema) =>
+  mongoose.models[name] ?? mongoose.model(name, schema);
+
+const userSchema = new Schema(
+  {
+    fullName: { type: String, required: true },
+    phoneNumber: { type: String },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+    },
+    hashPassword: { type: String, required: true },
+    role: {
+      type: String,
+      enum: ["customer", "staff", "admin"],
+      default: "customer",
+    },
+  },
+  { timestamps: true, collection: "User" },
+);
+
+export const User = model("User", userSchema);
+export default User;
