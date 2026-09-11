@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 
 const { Schema } = mongoose;
+const model = (name, schema) =>
+  mongoose.models[name] ?? mongoose.model(name, schema);
 
 const userSchema = new Schema(
   {
@@ -19,9 +21,14 @@ const userSchema = new Schema(
       enum: ["customer", "staff", "admin"],
       default: "customer",
     },
+    status: {
+      type: String,
+      enum: ["active", "locked"],
+      default: "active",
+    },
   },
   { timestamps: true, collection: "User" },
 );
 
-export const User = mongoose.model("User", userSchema);
+export const User = model("User", userSchema);
 export default User;

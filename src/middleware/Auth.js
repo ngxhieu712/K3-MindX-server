@@ -17,9 +17,6 @@ const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || "demo-refresh-s
 const ACCESS_TOKEN_EXPIRES_IN = "15m"; // ngắn — dùng để gọi API
 const REFRESH_TOKEN_EXPIRES_IN = "30d"; // dài — chỉ dùng để xin access token mới
 
-const users = [];
-// users item: { id, username, hashPassword, role }
-
 // Nơi lưu các refresh token đang "còn sống" — để có thể THU HỒI (revoke) khi
 // user logout, thay vì cứ để nó tự sống tới khi hết hạn. Thực tế nên lưu
 // trong DB (kèm userId, thiết bị, ngày tạo...), ở đây dùng Set cho demo.
@@ -34,7 +31,7 @@ export const validRefreshTokens = new Set();
  * ==========================================================================*/
 export function generateAccessToken(user) {
   return jwt.sign(
-    { sub: user.id, username: user.username, role: user.role },
+    { sub: String(user.id ?? user._id), email: user.email, role: user.role },
     ACCESS_TOKEN_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRES_IN, algorithm: "HS256" }
   );
@@ -42,7 +39,7 @@ export function generateAccessToken(user) {
 
 export function generateRefreshToken(user) {
   const refreshToken = jwt.sign(
-    { sub: user.id }, // refresh token chỉ cần biết "user nào", không cần nhét nhiều thông tin
+    { sub: String(user.id ?? user._id) }, // refresh token chỉ cần biết "user nào", không cần nhét nhiều thông tin
     REFRESH_TOKEN_SECRET,
     { expiresIn: REFRESH_TOKEN_EXPIRES_IN, algorithm: "HS256" }
   );
@@ -50,39 +47,61 @@ export function generateRefreshToken(user) {
   return refreshToken;
 }
 
+const REFRESH_TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 ngày, khớp với controller/Auth.js
 
+function setRefreshTokenCookie(res, token) {
+  res.cookie("refreshToken", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+  });
+}
 
-export const refreshToken = (req, res) => {
-  const { refreshToken } = req.body;
+// FIX: bản gốc đọc refreshToken từ req.body, nhưng cookie được set httpOnly
+// (JS phía client không đọc được để nhét vào body) và tra cứu user từ mảng
+// `users` nội bộ luôn rỗng — refresh-token cũ trước đây LUÔN LUÔN thất bại.
+// Ở đây: đọc refresh token từ cookie httpOnly, và tra user thật trong MongoDB.
+export const refreshToken = async (req, res) => {
+  const token = req.cookies?.refreshToken;
 
-  if (!refreshToken) {
+  if (!token) {
     return res.status(401).json({ message: "Thiếu refresh token" });
   }
-  if (!validRefreshTokens.has(refreshToken)) {
+  if (!validRefreshTokens.has(token)) {
     return res.status(403).json({ message: "Refresh token không hợp lệ hoặc đã bị thu hồi" });
   }
 
-  jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, { algorithms: ["HS256"] }, (err, decoded) => {
+  jwt.verify(token, REFRESH_TOKEN_SECRET, { algorithms: ["HS256"] }, async (err, decoded) => {
     if (err) {
-      validRefreshTokens.delete(refreshToken); // hết hạn thì dọn luôn cho sạch
+      validRefreshTokens.delete(token); // hết hạn thì dọn luôn cho sạch
+      res.clearCookie("refreshToken");
       return res.status(403).json({ message: "Refresh token không hợp lệ hoặc đã hết hạn" });
     }
 
-    const user = users.find((u) => u.id === decoded.sub);
-    if (!user) {
-      return res.status(403).json({ message: "User không tồn tại" });
-    }
-    const newRefreshToken = generateRefreshToken(user);
-    const newAccessToken = generateAccessToken(user);
+    try {
+      const user = await User.findById(decoded.sub);
+      if (!user) {
+        return res.status(403).json({ message: "User không tồn tại" });
+      }
 
-    return res.status(200).json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken, // ⚠️ client PHẢI lưu đè lên token cũ
-    });
+      // Rotate: thu hồi refresh token cũ, phát hành cặp token mới
+      validRefreshTokens.delete(token);
+      const newRefreshToken = generateRefreshToken(user);
+      const newAccessToken = generateAccessToken(user);
+      setRefreshTokenCookie(res, newRefreshToken);
+
+      return res.status(200).json({
+        accessToken: newAccessToken,
+        user: { fullName: user.fullName, email: user.email, phoneNumber: user.phoneNumber, role: user.role },
+      });
+    } catch (dbErr) {
+      return res.status(500).json({ message: "Lỗi máy chủ khi làm mới token" });
+    }
   });
 };
 
-function authenticateToken(req, res, next) {
+export function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"]; // đây là header HTTP Authentication
 
   if (!authHeader) {
@@ -111,7 +130,7 @@ function authenticateToken(req, res, next) {
 }
 
 
-function authorizeRole(...allowedRoles) {
+export function authorizeRole(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user) {
       // Phòng trường hợp middleware này bị dùng mà quên gọi authenticateToken trước
@@ -123,4 +142,7 @@ function authorizeRole(...allowedRoles) {
     next();
   };
 }
+
+// Tiện ích: gắn thẳng vào route admin, VD: router.get('/', requireAdmin, listMovies)
+export const requireAdmin = [authenticateToken, authorizeRole("admin")];
 

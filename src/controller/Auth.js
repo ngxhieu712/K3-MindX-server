@@ -41,6 +41,10 @@ export const login = async (req, res) => {
     return res.status(401).json({ message: "Sai email hoặc mật khẩu" });
   }
 
+  if (user.status === "locked") {
+    return res.status(403).json({ message: "Tài khoản đã bị khóa" });
+  }
+
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
   validRefreshTokens.add(refreshToken);
