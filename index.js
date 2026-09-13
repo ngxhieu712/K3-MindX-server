@@ -28,6 +28,8 @@ const app = express();
 const ALLOWED_ORIGINS = [
   process.env.CLIENT_ORIGIN || "http://localhost:5173",
   process.env.ADMIN_ORIGIN || "http://localhost:5174",
+  "https://k3-mind-x-adminweb.vercel.app",
+  "https://k3-mind-x-client.vercel.app"
 ];
 
 app.use(cors({
