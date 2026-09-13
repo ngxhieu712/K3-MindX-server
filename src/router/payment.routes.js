@@ -1,12 +1,13 @@
 import { Router } from "express";
-import { createQrPayment } from "../controllers/payment.controller.js";
-// TODO: SỬA LẠI đường dẫn import cho khớp vị trí thật (xem ghi chú ở booking.routes.js)
-import { authenticateToken } from "../middleware/auth.middleware.js";
+import { createQrPayment, confirmDemo, payWithWallet } from "../controller/payment.controller.js";
+import { authenticateToken } from "../middleware/Auth.js";
 
 const router = Router();
 
 router.use(authenticateToken);
 
-router.post("/bookings/:bookingId/qr", createQrPayment); // POST /api/payments/bookings/:bookingId/qr
+router.post("/bookings/:bookingId/qr", createQrPayment); // POST /api/customer/payments/bookings/:bookingId/qr
+router.post("/bookings/:bookingId/confirm-demo", confirmDemo); // demo: đã chuyển khoản ngân hàng
+router.post("/bookings/:bookingId/pay-wallet", payWithWallet); // thanh toán bằng ví thật
 
 export default router;

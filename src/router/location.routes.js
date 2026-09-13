@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { getLocations } from "../controllers/location.controller.js";
+import { getLocations } from "../controller/location.controller.js";
 
 const router = Router();
 
-router.get("/", getLocations); // GET /api/locations
+router.get("/", getLocations); // GET /api/customer/locations
 
 export default router;

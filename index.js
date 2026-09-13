@@ -17,6 +17,9 @@ import refundRouter from './src/router/Refund.js';
 import walletRouter from './src/router/Wallet.js';
 import bannerRouter from './src/router/Banner.js';
 import statsRouter from './src/router/Stats.js';
+// Router "khách hàng" (luồng đặt vé thật: phim/rạp/suất chiếu/ghế/booking/QR).
+// Mount dưới prefix riêng /api/customer để KHÔNG đụng route admin nào ở trên.
+import customerRouter from './src/router/customer.index.js';
 
 const app = express();
 
@@ -49,6 +52,7 @@ app.use('/api/refunds', refundRouter);
 app.use('/api/wallets', walletRouter);
 app.use('/api/banners', bannerRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/customer', customerRouter);
 
 
 

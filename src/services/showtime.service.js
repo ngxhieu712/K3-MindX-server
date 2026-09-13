@@ -1,6 +1,7 @@
-import { Showtime } from "../models/Showtime.js";
-import { Seat } from "../models/Seat.js";
-import { Booking } from "../models/Booking.js";
+import { Showtime } from "../model/Showtime.js";
+import { Seat } from "../model/Seat.js";
+import { Booking } from "../model/Booking.js";
+import { BOOKABLE_SHOWTIME_STATUSES } from "../config/constants.js";
 
 const startOfDay = (dateStr) => {
   const d = new Date(dateStr);
@@ -14,34 +15,34 @@ const endOfDay = (dateStr) => {
   return d;
 };
 
-// GET /api/showtimes/show-dates/:cinemaId
+// GET /api/customer/showtimes/show-dates/:cinemaId
 // Trả về danh sách ngày (YYYY-MM-DD) còn suất chiếu khả dụng tại 1 rạp, thay cho
 // mảng "dates" tĩnh trong mock cũ.
 export const getShowDates = async (cinemaId) => {
   const showtimes = await Showtime.find({
     cinemaId,
-    status: "available",
+    status: { $in: BOOKABLE_SHOWTIME_STATUSES },
     startTime: { $gte: new Date() },
   })
     .select("startTime")
     .lean();
 
   const uniqueDates = [
-    ...new Set(showtimes.map((s) => s.startTime.toISOString().slice(0, 10))),
+    ...new Set(showtimes.filter((s) => s.startTime).map((s) => s.startTime.toISOString().slice(0, 10))),
   ].sort();
 
   return uniqueDates;
 };
 
-// GET /api/showtimes?cinemaId=&date=
-// Trả về đúng shape bạn đề xuất: gom showtimes theo movie.
+// GET /api/customer/showtimes?cinemaId=&date=
+// Trả về đúng shape đề xuất: gom showtimes theo movie.
 export const getShowtimesByCinemaAndDate = async (cinemaId, date) => {
   const showtimes = await Showtime.find({
     cinemaId,
-    status: "available",
+    status: { $in: BOOKABLE_SHOWTIME_STATUSES },
     startTime: { $gte: startOfDay(date), $lte: endOfDay(date) },
   })
-    .populate("movieId")
+    .populate("movie")
     .populate("auditoriumId", "name code type")
     .sort({ startTime: 1 })
     .lean();
@@ -49,7 +50,8 @@ export const getShowtimesByCinemaAndDate = async (cinemaId, date) => {
   const grouped = new Map();
 
   for (const st of showtimes) {
-    const movie = st.movieId;
+    const movie = st.movie;
+    if (!movie) continue; // dữ liệu thiếu movie hợp lệ -> bỏ qua, không crash cả danh sách
     const key = String(movie._id);
 
     if (!grouped.has(key)) {
@@ -69,17 +71,24 @@ export const getShowtimesByCinemaAndDate = async (cinemaId, date) => {
   return Array.from(grouped.values());
 };
 
-// GET /api/showtimes/:showtimeId/seats
-// Trả về sơ đồ ghế thật của phòng chiếu, đánh dấu ghế nào đang unavailable
-// (đã "paid", hoặc đang "pending" mà chưa hết hạn giữ chỗ).
+// GET /api/customer/showtimes/:showtimeId/seats
+// Trả về sơ đồ ghế THẬT của đúng phòng chiếu gắn với suất chiếu này, đánh dấu
+// ghế nào đang unavailable (đã "confirmed", hoặc đang "pending" mà chưa hết
+// hạn giữ chỗ) — đây là phần thay thế logic mock cũ (luôn chọn sẵn H7/H8/H9,
+// luôn khoá sẵn C3) bằng dữ liệu thật theo từng suất chiếu cụ thể.
 export const getSeatLayoutForShowtime = async (showtimeId) => {
   const showtime = await Showtime.findById(showtimeId)
-    .populate("movieId")
+    .populate("movie")
     .populate("cinemaId", "name")
     .populate("auditoriumId", "name code type capacity")
     .lean();
 
   if (!showtime) return null;
+  if (!showtime.auditoriumId) {
+    const err = new Error("Suất chiếu này chưa gắn phòng chiếu, vui lòng liên hệ quản trị viên");
+    err.statusCode = 400;
+    throw err;
+  }
 
   const seats = await Seat.find({
     auditoriumId: showtime.auditoriumId._id,
@@ -89,19 +98,14 @@ export const getSeatLayoutForShowtime = async (showtimeId) => {
     .lean();
 
   const activeBookings = await Booking.find({
-    showtimeId,
-    $or: [
-      { status: "paid" },
-      { status: "pending", expiresAt: { $gt: new Date() } },
-    ],
+    showtime: showtimeId,
+    $or: [{ status: "confirmed" }, { status: "pending", expiresAt: { $gt: new Date() } }],
   })
-    .select("seats.seatId")
+    .select("seatDetails.seatId")
     .lean();
 
   const occupiedSeatIds = new Set(
-    activeBookings.flatMap((booking) =>
-      booking.seats.map((s) => String(s.seatId)),
-    ),
+    activeBookings.flatMap((booking) => booking.seatDetails.map((s) => String(s.seatId))),
   );
 
   const seatsWithStatus = seats.map((seat) => ({
@@ -125,6 +129,8 @@ export const getSeatLayoutForShowtime = async (showtimeId) => {
       seats: seatsInRow.sort((a, b) => a.number - b.number),
     }));
 
+  const availableCount = seatsWithStatus.filter((s) => s.status === "available").length;
+
   return {
     showtime: {
       _id: showtime._id,
@@ -133,10 +139,12 @@ export const getSeatLayoutForShowtime = async (showtimeId) => {
       format: showtime.format,
       price: showtime.price,
     },
-    movie: showtime.movieId,
+    movie: showtime.movie,
     cinema: showtime.cinemaId,
     auditorium: showtime.auditoriumId,
     rows,
+    totalSeats: seatsWithStatus.length,
+    availableSeats: availableCount, // dùng để cập nhật "số ghế còn trống" (yêu cầu #3)
   };
 };
 

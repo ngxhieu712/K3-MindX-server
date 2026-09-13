@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import { User } from "../model/User.js";
+import { Wallet } from "../model/Wallet.js";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -77,6 +78,16 @@ export const register = async (req, res) => {
     email,
     hashPassword,
     role: role === "admin" ? "admin" : "customer", // khoá cứng, client không tự set admin được
+  });
+
+  // Ví điện tử: PHẢI tạo ngay khi đăng ký, số dư 0đ (yêu cầu #1) — trước đây
+  // không có bước này nên user mới không có Wallet nào cả, phía client rơi
+  // vào dữ liệu mock cục bộ (localStorage) với số dư giả > 0.
+  await Wallet.create({
+    user: newUser._id,
+    userName: newUser.fullName,
+    email: newUser.email,
+    balance: 0,
   });
 
   // đăng ký xong tự động đăng nhập

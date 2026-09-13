@@ -1,6 +1,6 @@
-import { Location } from "../models/Location.js";
+import { Location } from "../model/Location.js";
 
-// GET /api/locations
+// GET /api/customer/locations
 // Trả về cây: [{ _id, name, slug, districts: [{ _id, name, slug }] }]
 export const getLocationsTree = async () => {
   const [cities, districts] = await Promise.all([
