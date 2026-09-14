@@ -28,7 +28,7 @@ const app = express();
 const ALLOWED_ORIGINS = [
   process.env.CLIENT_ORIGIN || "http://localhost:5173",
   process.env.ADMIN_ORIGIN || "http://localhost:5174",
-  "https://k3-mind-x-client-jlqlcg37j-ngxhieu712-8164s-projects.vercel.app",
+  "https://k3-mind-x-client-f4o70yqez-ngxhieu712-8164s-projects.vercel.app",
   "https://k3-mind-x-adminweb-ak5p4bj4f-ngxhieu712-8164s-projects.vercel.app"
 ];
 
