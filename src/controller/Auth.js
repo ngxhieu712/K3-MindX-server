@@ -13,7 +13,13 @@ const setRefreshTokenCookie = (res, refreshToken) => {
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    // "strict" chặn HOÀN TOÀN cookie khi frontend/backend khác domain thật —
+    // lúc dev không lộ ra vì mọi cổng localhost đều được trình duyệt coi là
+    // cùng 1 "site". Khi deploy thật (admin/client và server ở domain khác
+    // nhau), phải dùng "none" mới gửi được cookie cross-site — và "none" BẮT
+    // BUỘC đi kèm secure:true (chỉ hoạt động qua HTTPS, không dùng được với
+    // backend chạy http:// thường).
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: REFRESH_TOKEN_MAX_AGE,
   });
 };
